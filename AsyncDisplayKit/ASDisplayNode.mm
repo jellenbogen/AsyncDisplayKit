@@ -703,7 +703,6 @@ static ASDisplayNodeMethodOverrides GetASDisplayNodeMethodOverrides(Class c)
 
       ASLayout *previousLayout = _layout;
       ASSizeRange previousConstrainedSize = _constrainedSize;
-      [self applyLayout:newLayout constrainedSize:constrainedSize layoutContext:nil];
       
       [self _invalidateTransitionSentinel];
       
@@ -785,9 +784,15 @@ static ASDisplayNodeMethodOverrides GetASDisplayNodeMethodOverrides(Class c)
 
 - (void)didCompleteLayoutTransition:(id<ASContextTransitioning>)context
 {
-  [_pendingLayoutContext applySubnodeRemovals];
-  [self _completeLayoutCalculation];
-  _pendingLayoutContext = nil;
+  ASLayout *toLayout = [context layoutForKey:ASTransitionContextToLayoutKey];
+  if (toLayout != nil) {
+    [self applyLayout: [context layoutForKey:ASTransitionContextToLayoutKey]
+      constrainedSize: [context constrainedSizeForKey:ASTransitionContextToLayoutKey]
+        layoutContext: nil];
+    [_pendingLayoutContext applySubnodeRemovals];
+    [self _completeLayoutCalculation];
+    _pendingLayoutContext = nil;
+  }
 }
 
 #pragma mark - _ASTransitionContextCompletionDelegate
