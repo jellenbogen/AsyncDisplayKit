@@ -671,12 +671,6 @@ static ASDisplayNodeMethodOverrides GetASDisplayNodeMethodOverrides(Class c)
 
   int32_t transitionID = [self _newTransitionID];
   constrainedSize.transitionID = transitionID;
-
-  ASDisplayNodePerformBlockOnEverySubnode(self, ^(ASDisplayNode * _Nonnull node) {
-    ASDisplayNodeAssert([node _hasTransitionsInProgress] == NO, @"Can't start a transition when one of the subnodes is performing one.");
-    node.hierarchyState |= ASHierarchyStateLayoutPending;
-    node.pendingTransitionID = transitionID;
-  });
   
   void (^transitionBlock)() = ^{
     ASLayout *newLayout;
@@ -689,6 +683,12 @@ static ASDisplayNodeMethodOverrides GetASDisplayNodeMethodOverrides(Class c)
         self.usesImplicitHierarchyManagement = NO; // Temporary flag for 1.9.x
       }
     }
+    
+    ASDisplayNodePerformBlockOnEverySubnode(self, ^(ASDisplayNode * _Nonnull node) {
+      ASDisplayNodeAssert([node _hasTransitionsInProgress] == NO, @"Can't start a transition when one of the subnodes is performing one.");
+      node.hierarchyState |= ASHierarchyStateLayoutPending;
+      node.pendingTransitionID = transitionID;
+    });
     
     if ([self _shouldAbortTransitionWithID:transitionID]) {
       return;
