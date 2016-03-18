@@ -2234,6 +2234,10 @@ void recursivelyTriggerDisplayForLayer(CALayer *layer, BOOL shouldBlock)
     return;
   }
   
+  if (_transitionContext != nil) {
+    return;
+  }
+  
   [self __layoutSublayouts];
 }
 
