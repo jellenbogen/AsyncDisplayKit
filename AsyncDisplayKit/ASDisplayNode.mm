@@ -789,10 +789,10 @@ static ASDisplayNodeMethodOverrides GetASDisplayNodeMethodOverrides(Class c)
     [self applyLayout: [context layoutForKey:ASTransitionContextToLayoutKey]
       constrainedSize: [context constrainedSizeForKey:ASTransitionContextToLayoutKey]
         layoutContext: nil];
-    [_pendingLayoutContext applySubnodeRemovals];
-    [self _completeLayoutCalculation];
-    _pendingLayoutContext = nil;
   }
+  [_pendingLayoutContext applySubnodeRemovals];
+  [self _completeLayoutCalculation];
+  _pendingLayoutContext = nil;
 }
 
 #pragma mark - _ASTransitionContextCompletionDelegate
