@@ -104,24 +104,6 @@
   _viewControllerNode.frame = self.bounds;
 }
 
-- (instancetype)initWithLayerBlock:(ASDisplayNodeLayerBlock)viewBlock didLoadBlock:(ASDisplayNodeDidLoadBlock)didLoadBlock
-{
-  ASDisplayNodeAssertNotSupported();
-  return nil;
-}
-
-- (instancetype)initWithViewBlock:(ASDisplayNodeViewBlock)viewBlock didLoadBlock:(ASDisplayNodeDidLoadBlock)didLoadBlock
-{
-  ASDisplayNodeAssertNotSupported();
-  return nil;
-}
-
-- (void)setLayerBacked:(BOOL)layerBacked
-{
-  // ASRangeController expects ASCellNodes to be view-backed.  (Layer-backing is supported on ASCellNode subnodes.)
-  ASDisplayNodeAssert(!layerBacked, @"ASCellNode does not support layer-backing.");
-}
-
 - (void)__setNeedsLayout
 {
   CGSize oldSize = self.calculatedSize;
@@ -129,17 +111,39 @@
   
   //Adding this lock because lock used to be held when this method was called. Not sure if it's necessary for
   //didRelayoutFromOldSize:toNewSize:
-  ASDN::MutexLocker l(_propertyLock);
+  ASDN::MutexLocker l(__instanceLock__);
   [self didRelayoutFromOldSize:oldSize toNewSize:self.calculatedSize];
 }
 
-- (void)transitionLayoutWithAnimation:(BOOL)animated
-                         shouldMeasureAsync:(BOOL)shouldMeasureAsync
-                      measurementCompletion:(void(^)())completion
+- (void)transitionLayoutAnimated:(BOOL)animated
+           measurementCompletion:(void (^)())completion
 {
   CGSize oldSize = self.calculatedSize;
-  [super transitionLayoutWithAnimation:animated
-                    shouldMeasureAsync:shouldMeasureAsync
+  [super transitionLayoutAnimated:animated
+            measurementCompletion:^{
+              [self didRelayoutFromOldSize:oldSize toNewSize:self.calculatedSize];
+              if (completion) {
+                completion();
+              }
+            }
+   ];
+}
+
+//Deprecated
+- (void)transitionLayoutWithAnimation:(BOOL)animated
+                   shouldMeasureAsync:(BOOL)shouldMeasureAsync
+                measurementCompletion:(void(^)())completion
+{
+  [self transitionLayoutAnimated:animated measurementCompletion:completion];
+}
+
+- (void)transitionLayoutWithSizeRange:(ASSizeRange)constrainedSize
+                             animated:(BOOL)animated
+                measurementCompletion:(void (^)())completion
+{
+  CGSize oldSize = self.calculatedSize;
+  [super transitionLayoutWithSizeRange:constrainedSize
+                              animated:animated
                  measurementCompletion:^{
                    [self didRelayoutFromOldSize:oldSize toNewSize:self.calculatedSize];
                    if (completion) {
@@ -149,22 +153,13 @@
    ];
 }
 
+//Deprecated
 - (void)transitionLayoutWithSizeRange:(ASSizeRange)constrainedSize
                              animated:(BOOL)animated
                    shouldMeasureAsync:(BOOL)shouldMeasureAsync
                 measurementCompletion:(void(^)())completion
 {
-  CGSize oldSize = self.calculatedSize;
-  [super transitionLayoutWithSizeRange:constrainedSize
-                              animated:animated
-                    shouldMeasureAsync:shouldMeasureAsync
-                 measurementCompletion:^{
-                   [self didRelayoutFromOldSize:oldSize toNewSize:self.calculatedSize];
-                   if (completion) {
-                     completion();
-                   }
-                 }
-   ];
+  [self transitionLayoutWithSizeRange:constrainedSize animated:animated measurementCompletion:completion];
 }
 
 - (void)didRelayoutFromOldSize:(CGSize)oldSize toNewSize:(CGSize)newSize

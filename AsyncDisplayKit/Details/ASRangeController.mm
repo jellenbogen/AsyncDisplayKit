@@ -11,13 +11,16 @@
 #import "ASRangeController.h"
 
 #import "ASAssert.h"
-#import "ASWeakSet.h"
+#import "ASCellNode.h"
 #import "ASDisplayNodeExtras.h"
 #import "ASDisplayNodeInternal.h"
-#import "ASMultiDimensionalArrayUtils.h"
+#import "ASMultidimensionalArrayUtils.h"
 #import "ASInternalHelpers.h"
+#import "ASMultiDimensionalArrayUtils.h"
+#import "ASWeakSet.h"
+
 #import "ASDisplayNode+FrameworkPrivate.h"
-#import "ASCellNode.h"
+#import "AsyncDisplayKit+Debug.h"
 
 #define AS_RANGECONTROLLER_LOG_UPDATE_FREQ 0
 
@@ -26,6 +29,7 @@
   BOOL _rangeIsValid;
   BOOL _needsRangeUpdate;
   BOOL _layoutControllerImplementsSetVisibleIndexPaths;
+  BOOL _layoutControllerImplementsSetViewportSize;
   NSSet<NSIndexPath *> *_allPreviousIndexPaths;
   ASLayoutRangeMode _currentRangeMode;
   BOOL _didUpdateCurrentRange;
@@ -62,6 +66,10 @@ static UIApplicationState __ApplicationState = UIApplicationStateActive;
   _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(_updateCountDisplayLinkDidFire)];
   [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 #endif
+  
+  if ([ASRangeController shouldShowRangeDebugOverlay]) {
+    [self addRangeControllerToRangeDebugOverlay];
+  }
   
   return self;
 }
@@ -143,7 +151,8 @@ static UIApplicationState __ApplicationState = UIApplicationStateActive;
 - (void)setLayoutController:(id<ASLayoutController>)layoutController
 {
   _layoutController = layoutController;
-  _layoutControllerImplementsSetVisibleIndexPaths = [_layoutController respondsToSelector:@selector(setVisibleNodeIndexPaths:)];
+  _layoutControllerImplementsSetVisibleIndexPaths = [layoutController respondsToSelector:@selector(setVisibleNodeIndexPaths:)];
+  _layoutControllerImplementsSetViewportSize = [layoutController respondsToSelector:@selector(setViewportSize:)];
   if (layoutController && _dataSource) {
     [self updateIfNeeded];
   }
@@ -181,7 +190,9 @@ static UIApplicationState __ApplicationState = UIApplicationStateActive;
   }
   
   ASScrollDirection scrollDirection = [_dataSource scrollDirectionForRangeController:self];
-  [_layoutController setViewportSize:[_dataSource viewportSizeForRangeController:self]];
+  if (_layoutControllerImplementsSetViewportSize) {
+    [_layoutController setViewportSize:[_dataSource viewportSizeForRangeController:self]];
+  }
   
   // the layout controller needs to know what the current visible indices are to calculate range offsets
   if (_layoutControllerImplementsSetVisibleIndexPaths) {
@@ -331,6 +342,25 @@ static UIApplicationState __ApplicationState = UIApplicationStateActive;
     }
   }
   
+  // TODO: This code is for debugging only, but would be great to clean up with a delegate method implementation.
+  if ([ASRangeController shouldShowRangeDebugOverlay]) {
+    ASScrollDirection scrollableDirections = ASScrollDirectionUp | ASScrollDirectionDown;
+    if ([_dataSource isKindOfClass:NSClassFromString(@"ASCollectionView")]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+      scrollableDirections = (ASScrollDirection)[_dataSource performSelector:@selector(scrollableDirections)];
+#pragma clang diagnostic pop
+    }
+    
+    [self updateRangeController:self
+       withScrollableDirections:scrollableDirections
+                scrollDirection:scrollDirection
+                      rangeMode:rangeMode
+        displayTuningParameters:parametersDisplay
+      fetchDataTuningParameters:parametersFetchData
+                 interfaceState:selfInterfaceState];
+  }
+  
   _rangeIsValid = YES;
   
 #if ASRangeControllerLoggingEnabled
@@ -411,50 +441,44 @@ static UIApplicationState __ApplicationState = UIApplicationStateActive;
 
 - (void)dataControllerBeginUpdates:(ASDataController *)dataController
 {
-  ASPerformBlockOnMainThread(^{
-    [_delegate didBeginUpdatesInRangeController:self];
-  });
+  ASDisplayNodeAssertMainThread();
+  [_delegate didBeginUpdatesInRangeController:self];
 }
 
 - (void)dataController:(ASDataController *)dataController endUpdatesAnimated:(BOOL)animated completion:(void (^)(BOOL))completion
 {
-  ASPerformBlockOnMainThread(^{
-    [_delegate rangeController:self didEndUpdatesAnimated:animated completion:completion];
-  });
+  ASDisplayNodeAssertMainThread();
+  [_delegate rangeController:self didEndUpdatesAnimated:animated completion:completion];
 }
 
 - (void)dataController:(ASDataController *)dataController didInsertNodes:(NSArray *)nodes atIndexPaths:(NSArray *)indexPaths withAnimationOptions:(ASDataControllerAnimationOptions)animationOptions
 {
   ASDisplayNodeAssert(nodes.count == indexPaths.count, @"Invalid index path");
-  ASPerformBlockOnMainThread(^{
-    _rangeIsValid = NO;
-    [_delegate rangeController:self didInsertNodes:nodes atIndexPaths:indexPaths withAnimationOptions:animationOptions];
-  });
+  ASDisplayNodeAssertMainThread();
+  _rangeIsValid = NO;
+  [_delegate rangeController:self didInsertNodes:nodes atIndexPaths:indexPaths withAnimationOptions:animationOptions];
 }
 
 - (void)dataController:(ASDataController *)dataController didDeleteNodes:(NSArray *)nodes atIndexPaths:(NSArray *)indexPaths withAnimationOptions:(ASDataControllerAnimationOptions)animationOptions
 {
-  ASPerformBlockOnMainThread(^{
-    _rangeIsValid = NO;
-    [_delegate rangeController:self didDeleteNodes:nodes atIndexPaths:indexPaths withAnimationOptions:animationOptions];
-  });
+  ASDisplayNodeAssertMainThread();
+  _rangeIsValid = NO;
+  [_delegate rangeController:self didDeleteNodes:nodes atIndexPaths:indexPaths withAnimationOptions:animationOptions];
 }
 
 - (void)dataController:(ASDataController *)dataController didInsertSections:(NSArray *)sections atIndexSet:(NSIndexSet *)indexSet withAnimationOptions:(ASDataControllerAnimationOptions)animationOptions
 {
   ASDisplayNodeAssert(sections.count == indexSet.count, @"Invalid sections");
-  ASPerformBlockOnMainThread(^{
-    _rangeIsValid = NO;
-    [_delegate rangeController:self didInsertSectionsAtIndexSet:indexSet withAnimationOptions:animationOptions];
-  });
+  ASDisplayNodeAssertMainThread();
+  _rangeIsValid = NO;
+  [_delegate rangeController:self didInsertSectionsAtIndexSet:indexSet withAnimationOptions:animationOptions];
 }
 
 - (void)dataController:(ASDataController *)dataController didDeleteSectionsAtIndexSet:(NSIndexSet *)indexSet withAnimationOptions:(ASDataControllerAnimationOptions)animationOptions
 {
-  ASPerformBlockOnMainThread(^{
-    _rangeIsValid = NO;
-    [_delegate rangeController:self didDeleteSectionsAtIndexSet:indexSet withAnimationOptions:animationOptions];
-  });
+  ASDisplayNodeAssertMainThread();
+  _rangeIsValid = NO;
+  [_delegate rangeController:self didDeleteSectionsAtIndexSet:indexSet withAnimationOptions:animationOptions];
 }
 
 #pragma mark - Memory Management
